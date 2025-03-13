@@ -39,39 +39,29 @@
 #     return Data(edge_index=edge_index, edge_attr=edge_attr, num_nodes=num_nodes, y=y)
 
 
+
 import gzip
 import json
 import torch
 from torch_geometric.data import Dataset, Data
-import os
-from tqdm import tqdm 
 from torch_geometric.loader import DataLoader
 
 class GraphDataset(Dataset):
     def __init__(self, filename, transform=None, pre_transform=None):
         self.raw = filename
-        self.offsets = self.index_file(self.raw)  # Store offsets instead of full graphs
+        self.num_graphs, self.graphs_dicts = self._count_graphs() 
         super().__init__(None, transform, pre_transform)
 
     def len(self):
-        return len(self.offsets)
-
+        return self.num_graphs  
+    
     def get(self, idx):
+        return dictToGraphObject(self.graphs_dicts[idx])
+
+    def _count_graphs(self):
         with gzip.open(self.raw, "rt", encoding="utf-8") as f:
-            f.seek(self.offsets[idx])  # Jump to the right position in the file
-            line = f.readline()
-            graph_dict = json.loads(line)  # Load only this graph
-        return dictToGraphObject(graph_dict)
-
-    @staticmethod
-    def index_file(path):
-        offsets = []
-        with gzip.open(path, "rt", encoding="utf-8") as f:
-            while f.tell() < os.fstat(f.fileno()).st_size:
-                offsets.append(f.tell())  # Store byte offset
-                f.readline()  # Move to next line
-        return offsets
-
+            graphs_dicts = json.load(f)  # Load full JSON array without keeping references
+            return len(graphs_dicts),graphs_dicts  # Return number of graphs
 
 def dictToGraphObject(graph_dict):
     edge_index = torch.tensor(graph_dict["edge_index"], dtype=torch.long)
@@ -79,7 +69,6 @@ def dictToGraphObject(graph_dict):
     num_nodes = graph_dict["num_nodes"]
     y = torch.tensor(graph_dict["y"][0], dtype=torch.long) if graph_dict["y"] is not None else None
     return Data(edge_index=edge_index, edge_attr=edge_attr, num_nodes=num_nodes, y=y)
-
 
 
 
